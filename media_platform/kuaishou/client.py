@@ -67,7 +67,17 @@ class KuaiShouClient(AbstractApiClient, ProxyRefreshMixin):
 
         async with httpx.AsyncClient(proxy=self.proxy) as client:
             response = await client.request(method, url, timeout=self.timeout, **kwargs)
-        data: Dict = response.json()
+        try:
+            if response.status_code != 200:
+                utils.logger.error(f"[KuaiShouClient.request] Request failed with status code: {response.status_code}")
+                
+            data: Dict = response.json()
+        except Exception as e:
+            utils.logger.error(f"[KuaiShouClient.request] JSON decode error: {e}")
+            utils.logger.error(f"[KuaiShouClient.request] Status Code: {response.status_code}")
+            utils.logger.error(f"[KuaiShouClient.request] Response text: {response.text[:500]}...")
+            raise DataFetchError(f"JSON decode error: {e}, status: {response.status_code}, response: {response.text[:200]}")
+            
         if data.get("errors"):
             raise DataFetchError(data.get("errors", "unkonw error"))
         else:

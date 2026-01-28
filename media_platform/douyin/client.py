@@ -71,7 +71,11 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         if not params:
             return
         headers = headers or self.headers
-        local_storage: Dict = await self.playwright_page.evaluate("() => window.localStorage")  # type: ignore
+        try:
+            local_storage: Dict = await self.playwright_page.evaluate("() => window.localStorage")  # type: ignore
+        except Exception as e:
+            utils.logger.warning(f"[DouYinClient] Failed to get localStorage: {e}")
+            local_storage = {}
         common_params = {
             "device_platform": "webapp",
             "aid": "6383",

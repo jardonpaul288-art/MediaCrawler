@@ -450,3 +450,45 @@ class ZhihuCreator(Base):
     get_voteup_count = Column(Integer, default=0)
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
+
+
+# ==================== 天津联通舆情监控表 ====================
+
+class UnifiedSentiment(Base):
+    """统一舆情表 - 整合各平台帖子和评论数据"""
+    __tablename__ = 'unified_sentiment'
+    id = Column(Integer, primary_key=True)
+    platform = Column(String(32), index=True)           # 平台代码：xhs/dy/ks/bili/wb/tieba/zhihu
+    platform_name = Column(String(32), default='')      # 平台中文名：小红书/抖音/快手/B站/微博/贴吧/知乎
+    content_type = Column(String(16), index=True)       # 类型：post/comment
+    content_id = Column(String(255), index=True)        # 原始内容ID
+    title = Column(Text)                                # 标题
+    content = Column(Text)                              # 正文内容
+    user_nickname = Column(Text)                        # 用户昵称
+    user_id = Column(String(255))                       # 用户ID
+    ip_location = Column(Text, default='')              # IP归属地（如：天津、北京等）
+    source_url = Column(Text)                           # 原始链接
+    source_keyword = Column(Text)                       # 搜索关键词
+    publish_time = Column(BigInteger, index=True)       # 发布时间戳
+    add_ts = Column(BigInteger)                         # 入库时间
+    last_modify_ts = Column(BigInteger)                 # 更新时间
+    is_analyzed = Column(Integer, default=0, index=True)  # 是否已分析：0-未分析，1-已分析
+
+
+class NegativeSentiment(Base):
+    """负面舆情表 - 存储情感分析判定为负面的内容"""
+    __tablename__ = 'negative_sentiment'
+    id = Column(Integer, primary_key=True)
+    unified_id = Column(Integer, index=True)            # 关联 unified_sentiment.id
+    platform = Column(String(32), index=True)           # 平台代码
+    platform_name = Column(String(32), default='')      # 平台中文名
+    content_type = Column(String(16))                   # 类型：post/comment
+    title = Column(Text)                                # 标题
+    content = Column(Text)                              # 正文内容
+    user_nickname = Column(Text)                        # 用户昵称
+    source_url = Column(Text)                           # 原始链接
+    publish_time = Column(BigInteger, index=True)       # 发布时间戳
+    sentiment_score = Column(String(32))                # 情感得分：正面/中性/负面
+    sentiment_reason = Column(Text)                     # 判定原因
+    add_ts = Column(BigInteger)                         # 入库时间
+

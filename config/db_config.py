@@ -21,7 +21,7 @@
 import os
 
 # mysql config
-MYSQL_DB_PWD = os.getenv("MYSQL_DB_PWD", "123456")
+MYSQL_DB_PWD = os.getenv("MYSQL_DB_PWD", "root123456")
 MYSQL_DB_USER = os.getenv("MYSQL_DB_USER", "root")
 MYSQL_DB_HOST = os.getenv("MYSQL_DB_HOST", "localhost")
 MYSQL_DB_PORT = os.getenv("MYSQL_DB_PORT", 3306)

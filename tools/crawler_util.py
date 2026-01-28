@@ -86,19 +86,17 @@ async def find_qrcode_img_from_canvas(page: Page, canvas_selector: str) -> str:
 
 def show_qrcode(qr_code) -> None:  # type: ignore
     """parse base64 encode qrcode image and show it"""
-    if "," in qr_code:
-        qr_code = qr_code.split(",")[1]
-    qr_code = base64.b64decode(qr_code)
-    image = Image.open(BytesIO(qr_code))
-
-    # Add a square border around the QR code and display it within the border to improve scanning accuracy.
-    width, height = image.size
-    new_image = Image.new('RGB', (width + 20, height + 20), color=(255, 255, 255))
-    new_image.paste(image, (10, 10))
-    draw = ImageDraw.Draw(new_image)
-    draw.rectangle((0, 0, width + 19, height + 19), outline=(0, 0, 0), width=1)
-    del ImageShow.UnixViewer.options["save_all"]
-    new_image.show()
+    # 禁用二维码图片显示，避免占用内存和弹出窗口
+    # 如果已登录并保存了登录状态，不会再调用此函数
+    utils.logger.info("[show_qrcode] 检测到需要扫码登录，请在浏览器中扫码或使用已保存的登录状态")
+    utils.logger.info("[show_qrcode] 提示：确保 SAVE_LOGIN_STATE = True 以保存登录状态")
+    # 原代码已禁用：
+    # if "," in qr_code:
+    #     qr_code = qr_code.split(",")[1]
+    # qr_code = base64.b64decode(qr_code)
+    # image = Image.open(BytesIO(qr_code))
+    # ...
+    # new_image.show()
 
 
 def get_user_agent() -> str:

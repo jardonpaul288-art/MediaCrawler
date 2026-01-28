@@ -76,11 +76,20 @@ class KuaishouLogin(AbstractLogin):
         """login kuaishou website and keep webdriver login state"""
         utils.logger.info("[KuaishouLogin.login_by_qrcode] Begin login kuaishou by qrcode ...")
 
+        # check login state first
+        if await self.check_login_state():
+            utils.logger.info("[KuaishouLogin.login_by_qrcode] Already logged in, skipping login process")
+            return
+
         # click login button
-        login_button_ele = self.context_page.locator(
-            "xpath=//p[text()='登录']"
-        )
-        await login_button_ele.click()
+        login_button_ele = self.context_page.locator("xpath=//p[text()='登录']")
+        try:
+            if await login_button_ele.count() > 0 and await login_button_ele.is_visible():
+                await login_button_ele.click()
+            else:
+                utils.logger.info("[KuaishouLogin.login_by_qrcode] Login button not found or not visible, assuming already logged in or different page layout")
+        except Exception as e:
+            utils.logger.warning(f"[KuaishouLogin.login_by_qrcode] Error clicking login button: {e}")
 
         # find login qrcode
         qrcode_img_selector = "//div[@class='qrcode-img']//img"

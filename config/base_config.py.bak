@@ -19,7 +19,7 @@
 
 # 基础配置
 PLATFORM = "xhs"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
-KEYWORDS = "天津联通负面,天津联通,联通投诉,联通维权,联通吐槽,联通差评,联通服务差,联通乱扣费,联通网络差"  # 关键词搜索配置，以英文逗号分隔
+KEYWORDS = "编程副业,编程兼职"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
 CRAWLER_TYPE = (
@@ -38,7 +38,7 @@ IP_PROXY_PROVIDER_NAME = "kuaidaili"  # kuaidaili | wandouhttp
 # 设置False会打开一个浏览器
 # 小红书如果一直扫码登录不通过，打开浏览器手动过一下滑动验证码
 # 抖音如果一直提示失败，打开浏览器看下是否扫码登录之后出现了手机号验证，如果出现了手动过一下再试。
-HEADLESS = False
+HEADLESS = True
 
 # 是否保存登录状态
 SAVE_LOGIN_STATE = True
@@ -61,7 +61,7 @@ CUSTOM_BROWSER_PATH = ""
 
 # CDP模式下是否启用无头模式
 # 注意：即使设置为True，某些反检测功能在无头模式下可能效果不佳
-CDP_HEADLESS = False
+CDP_HEADLESS = True
 
 # 浏览器启动超时时间（秒）
 BROWSER_LAUNCH_TIMEOUT = 60
