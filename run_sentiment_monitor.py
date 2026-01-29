@@ -152,10 +152,36 @@ async def run_scheduled_monitor(
             
             print(f"\n{'='*70}")
             print(f"[{get_timestamp()}] 📊 结果汇总 (耗时 {elapsed/60:.1f} 分钟)")
-            if results["crawl"] and results["crawl"]["status"] == "success":
-                print(f"    ✅ 爬取: {results['crawl'].get('success_count')}/{results['crawl'].get('platforms')} 平台")
-            if results["sync"] and results["sync"]["status"] == "success":
-                print(f"    ✅ 同步: {results['sync'].get('total_posts')} 帖子, {results['sync'].get('total_comments')} 评论")
+            
+            # 统计爬取结果
+            crawl_success = 0
+            crawl_total = 0
+            if isinstance(results["crawl"], list):
+                crawl_total = len(results["crawl"])
+                crawl_success = sum(1 for r in results["crawl"] if r.get("status") == "success")
+            elif isinstance(results["crawl"], dict) and results["crawl"].get("status") == "success":
+                # 兼容旧格式（虽然现在是并行模式）
+                crawl_success = results["crawl"].get("success_count", 0)
+                crawl_total = results["crawl"].get("platforms", 0)
+            
+            if crawl_total > 0:
+                print(f"    ✅ 爬取: {crawl_success}/{crawl_total} 平台")
+                
+            # 统计同步结果
+            sync_posts = 0
+            sync_comments = 0
+            if isinstance(results["sync"], list):
+                for item in results["sync"]:
+                    data = item.get("data", {})
+                    sync_posts += data.get("posts", 0)
+                    sync_comments += data.get("comments", 0)
+            elif isinstance(results["sync"], dict) and results["sync"].get("status") == "success":
+                sync_posts = results["sync"].get("total_posts", 0)
+                sync_comments = results["sync"].get("total_comments", 0)
+                
+            if sync_posts > 0 or sync_comments > 0:
+                print(f"    ✅ 同步: {sync_posts} 帖子, {sync_comments} 评论")
+                
             if results["analyze"] and results["analyze"]["status"] == "success":
                 print(f"    ✅ 分析: {results['analyze'].get('total_processed')} 条, 负面 {results['analyze'].get('negative_count')} 条")
             print(f"{'='*70}")
@@ -164,9 +190,8 @@ async def run_scheduled_monitor(
             import traceback
             traceback.print_exc()
         finally:
-            # 确保恢复配置
-            from sentiment_crawler import restore_config_file
-            restore_config_file()
+            # 并行模式下不需要恢复配置，因为是子进程运行
+            pass
         
         if run_once:
             print(f"\n[{get_timestamp()}] 🏁 完成")
@@ -179,7 +204,7 @@ async def run_scheduled_monitor(
 def parse_args():
     parser = argparse.ArgumentParser(description="天津联通舆情监控系统")
     parser.add_argument("--interval", type=int, default=20, help="执行间隔（分钟）")
-    parser.add_argument("--time-per-platform", type=float, default=3, help="每平台超时（分钟）")
+    parser.add_argument("--time-per-platform", type=float, default=0.5, help="每平台超时（分钟）")
     parser.add_argument("--once", action="store_true", help="只执行一次")
     parser.add_argument("--skip-crawl", action="store_true", help="跳过爬取")
     parser.add_argument("--skip-sync", action="store_true", help="跳过同步")

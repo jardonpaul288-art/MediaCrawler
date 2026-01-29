@@ -42,7 +42,8 @@ SENTIMENT_KEYWORDS = [
 ]
 
 # 支持的平台列表
-ALL_PLATFORMS = ["ks","dy", "xhs", "bili", "wb", "tieba", "zhihu"]
+# ALL_PLATFORMS = ["ks","dy", "xhs", "bili", "wb", "tieba", "zhihu"]
+ALL_PLATFORMS = ["ks","dy"]
 
 # 平台中文名称映射
 PLATFORM_NAMES = {

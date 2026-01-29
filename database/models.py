@@ -482,13 +482,51 @@ class NegativeSentiment(Base):
     unified_id = Column(Integer, index=True)            # 关联 unified_sentiment.id
     platform = Column(String(32), index=True)           # 平台代码
     platform_name = Column(String(32), default='')      # 平台中文名
-    content_type = Column(String(16))                   # 类型：post/comment
+    content_type = Column(String(16))                   # 类型：帖子/评论
     title = Column(Text)                                # 标题
     content = Column(Text)                              # 正文内容
     user_nickname = Column(Text)                        # 用户昵称
+    ip_location = Column(Text, default='')              # IP归属地
     source_url = Column(Text)                           # 原始链接
     publish_time = Column(BigInteger, index=True)       # 发布时间戳
+    last_modify_ts = Column(BigInteger)                 # 最后发言时间
     sentiment_score = Column(String(32))                # 情感得分：正面/中性/负面
     sentiment_reason = Column(Text)                     # 判定原因
     add_ts = Column(BigInteger)                         # 入库时间
 
+
+# ==================== 今日头条 ====================
+
+class ToutiaoPost(Base):
+    """今日头条帖子表"""
+    __tablename__ = 'toutiao_post'
+    id = Column(Integer, primary_key=True)
+    post_id = Column(String(255), nullable=False, index=True, unique=True)  # 帖子ID
+    title = Column(Text)                                # 标题
+    content = Column(Text)                              # 内容摘要
+    source = Column(Text)                               # 来源/作者
+    source_url = Column(Text)                           # 原始链接
+    image_url = Column(Text)                            # 封面图片
+    create_time = Column(BigInteger, index=True)        # 发布时间戳
+    add_ts = Column(BigInteger)                         # 入库时间
+    last_modify_ts = Column(BigInteger)                 # 更新时间
+    source_keyword = Column(Text, default='')           # 搜索关键词
+
+
+# ==================== 黑猫投诉 ====================
+
+class HeimaoComplaint(Base):
+    """黑猫投诉表"""
+    __tablename__ = 'heimao_complaint'
+    id = Column(Integer, primary_key=True)
+    complaint_id = Column(String(255), nullable=False, index=True, unique=True)  # 投诉ID
+    title = Column(Text)                                # 投诉标题
+    content = Column(Text)                              # 投诉内容
+    user_nickname = Column(Text)                        # 投诉用户昵称
+    target_company = Column(Text)                       # 被投诉商家
+    complaint_status = Column(String(32))               # 处理状态：已回复/已完成/处理中等
+    source_url = Column(Text)                           # 原始链接
+    create_time = Column(BigInteger, index=True)        # 投诉时间戳
+    add_ts = Column(BigInteger)                         # 入库时间
+    last_modify_ts = Column(BigInteger)                 # 更新时间
+    source_keyword = Column(Text, default='')           # 搜索关键词

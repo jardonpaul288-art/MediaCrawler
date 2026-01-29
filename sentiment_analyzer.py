@@ -40,6 +40,34 @@ def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def normalize_timestamp(ts) -> int:
+    """
+    统一时间戳格式为毫秒级
+    - 10位数字：秒级时间戳，转换为毫秒
+    - 13位数字：毫秒级时间戳，直接返回
+    - 其他：返回当前时间戳
+    """
+    if ts is None:
+        return int(time.time() * 1000)
+    
+    try:
+        ts = int(ts)
+        if ts < 0:
+            return int(time.time() * 1000)
+        
+        # 10位数字是秒级时间戳
+        if ts < 10000000000:
+            return ts * 1000
+        # 13位数字是毫秒级时间戳
+        elif ts < 10000000000000:
+            return ts
+        else:
+            # 异常大的数字，返回当前时间
+            return int(time.time() * 1000)
+    except (ValueError, TypeError):
+        return int(time.time() * 1000)
+
+
 # API 配置
 API_URL = "https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1/chat/completions"
 API_KEY = "sk-b1632e634f2b4a36a41e52927e12d5d4"
@@ -197,17 +225,23 @@ async def call_llm_api(content: str, title: str = "", ip_location: str = "") -> 
 请严格按照以下JSON格式返回结果，不要有任何其他内容：
 {{"is_tianjin_unicom": true或false, "is_negative": true或false, "score": "正面"或"中性"或"负面", "reason": "判定原因（简要说明）"}}
 
-判定标准：
-1. 首先判断是否与"天津联通"相关：
-   - 明确提到"天津联通"
-   - 提到联通相关内容（宽带、套餐、服务等）+ 发帖人IP为天津
-   - 提到联通相关内容 + 内容中出现天津地名
-2. 如果与天津联通相关，再判断情感：
-   - 负面：投诉、抱怨、批评、不满、差评、骗人、乱扣费等
-   - 正面：表扬、感谢、好评、推荐等
-   - 中性：客观描述、咨询、讨论等
+【重要】判定标准：
 
-宁可多判为相关，不要漏掉真正的负面舆情。
+第一步：判断是否与"天津联通"相关（必须满足以下条件之一）：
+1. 内容明确提到"天津联通"或"联通天津"
+2. 内容涉及联通相关业务（宽带、套餐、服务等）+ 发帖人IP归属地为"天津"
+3. 内容涉及联通相关业务 + 内容中明确提到天津地名（如塘沽、滨海、河西等）
+
+【特别注意】以下情况不属于"天津联通"相关：
+- 发帖人IP不是天津，且内容未提及天津地名
+- 只提到"中国联通"但发帖人在其他省市（如广东、四川、河南等）
+- 提到的是其他省市的联通问题
+- 官方客服的通用回复模板
+
+第二步：如果确定与天津联通相关，再判断情感：
+- 负面：投诉、抱怨、批评、不满、差评、骗人、乱扣费、欺诈等
+- 正面：表扬、感谢、好评、推荐、服务好等  
+- 中性：客观描述、咨询、讨论、无明显情感倾向
 
 请直接返回JSON，不要有任何解释或前缀："""
 
@@ -320,11 +354,21 @@ async def test_api_connection() -> bool:
     return True
 
 
-async def analyze_single_content(unified_id: int, content: str, title: str = "", ip_location: str = "") -> Dict:
-    """分析单条内容"""
-    result = await call_llm_api(content, title, ip_location)
-    result["unified_id"] = unified_id
-    return result
+async def analyze_single_content(unified_id: int, content: str, title: str = "", ip_location: str = "", max_retries: int = 3) -> Dict:
+    """分析单条内容（带重试机制）"""
+    last_error = None
+    for attempt in range(max_retries):
+        result = await call_llm_api(content, title, ip_location)
+        if not result.get("error"):
+            result["unified_id"] = unified_id
+            return result
+        last_error = result
+        if attempt < max_retries - 1:
+            await asyncio.sleep(1)  # 等待1秒后重试
+    
+    # 所有重试都失败
+    last_error["unified_id"] = unified_id
+    return last_error
 
 
 async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> Dict:
@@ -341,7 +385,7 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
     print(f"\n{'='*60}")
     print(f"[{get_timestamp()}] 📢 开始情感分析")
     print(f"[{get_timestamp()}] 📋 最大处理数量: {limit} 条")
-    print(f"[{get_timestamp()}] 📋 策略: 宁多勿少，确保及时性")
+    print(f"[{get_timestamp()}] 📋 策略: 严格筛选天津联通相关内容")
     print(f"{'='*60}\n")
     
     stats = {
@@ -351,11 +395,28 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
         "positive_count": 0,
         "neutral_count": 0,
         "not_related_count": 0,
-        "error_count": 0
+        "error_count": 0,
+        "retry_count": 0
     }
     
+    # 失败记录队列，用于最后重试
+    failed_records = []
+    # 负面舆情收集列表，用于按publish_time排序后批量插入
+    negative_items = []
+    
     async with get_db_session() as session:
-        # 获取未分析的内容
+        # 1. 首先删除一个月前的负面舆情数据
+        one_month_ago_ms = int((time.time() - 30 * 24 * 3600) * 1000)
+        delete_result = await session.execute(
+            text("DELETE FROM negative_sentiment WHERE publish_time < :cutoff"),
+            {"cutoff": one_month_ago_ms}
+        )
+        deleted_count = delete_result.rowcount
+        if deleted_count > 0:
+            print(f"[{get_timestamp()}] 🗑️  已删除 {deleted_count} 条一个月前的负面舆情数据")
+            await session.commit()
+        
+        # 2. 获取未分析的内容
         result = await session.execute(
             select(UnifiedSentiment).where(
                 UnifiedSentiment.is_analyzed == 0
@@ -371,7 +432,7 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
         
         current_ts = int(time.time() * 1000)
         
-        # 分批处理
+        # 3. 分批处理
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
             print(f"[{get_timestamp()}] 🔄 处理第 {i+1}-{min(i+batch_size, len(records))} 条...")
@@ -379,7 +440,6 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
             # 预筛选
             filtered_batch = []
             for record in batch:
-                # 从统一表中获取IP信息（已在同步时提取）
                 ip_location = record.ip_location or ""
                 
                 should_analyze, pre_reason = pre_filter_content(
@@ -404,10 +464,9 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
             if not filtered_batch:
                 continue
             
-            # 并行发送API请求
+            # 并行发送API请求（不重试，失败的放入队列）
             tasks = [
-                analyze_single_content(
-                    record.id,
+                call_llm_api(
                     record.content or "",
                     record.title or "",
                     ip_location
@@ -422,14 +481,10 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
                 record, ip_location = filtered_batch[j]
                 stats["total_processed"] += 1
                 
-                if isinstance(result, Exception):
-                    stats["error_count"] += 1
-                    print(f"    ❌ ID {record.id}: 处理异常 - {str(result)[:50]}")
-                    continue
-                
-                if result.get("error"):
-                    stats["error_count"] += 1
-                    print(f"    ⚠️  ID {record.id}: {result.get('reason', '未知错误')[:50]}")
+                # 检查是否需要重试
+                if isinstance(result, Exception) or result.get("error"):
+                    # 加入失败队列，稍后重试
+                    failed_records.append((record, ip_location))
                     continue
                 
                 # 更新分析状态
@@ -455,26 +510,32 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
                 else:
                     stats["neutral_count"] += 1
                 
-                # 如果是负面舆情，插入负面表
+                # 如果是负面舆情，收集到列表中
                 if result.get("is_negative"):
                     platform_name = PLATFORM_NAMES.get(record.platform, record.platform)
+                    content_type_cn = "帖子" if record.content_type == "post" else "评论"
                     print(f"    🔴 ID {record.id} ({platform_name}): 负面 - {result.get('reason', '')[:40]}...")
                     
-                    negative = NegativeSentiment(
-                        unified_id=record.id,
-                        platform=record.platform,
-                        platform_name=platform_name,  # 添加平台中文名
-                        content_type=record.content_type,
-                        title=record.title,
-                        content=record.content,
-                        user_nickname=record.user_nickname,
-                        source_url=record.source_url,
-                        publish_time=record.publish_time,
-                        sentiment_score=score,
-                        sentiment_reason=result.get("reason", ""),
-                        add_ts=current_ts
-                    )
-                    session.add(negative)
+                    # 归一化时间戳
+                    normalized_publish_time = normalize_timestamp(record.publish_time)
+                    normalized_last_modify_ts = normalize_timestamp(record.last_modify_ts)
+                    
+                    negative_items.append({
+                        "unified_id": record.id,
+                        "platform": record.platform,
+                        "platform_name": platform_name,
+                        "content_type": content_type_cn,
+                        "title": record.title,
+                        "content": record.content,
+                        "user_nickname": record.user_nickname,
+                        "ip_location": record.ip_location or "",
+                        "source_url": record.source_url,
+                        "publish_time": normalized_publish_time,
+                        "last_modify_ts": normalized_last_modify_ts,
+                        "sentiment_score": score,
+                        "sentiment_reason": result.get("reason", ""),
+                        "add_ts": current_ts
+                    })
             
             # 提交当前批次
             await session.commit()
@@ -482,6 +543,94 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
             # 控制API调用频率
             if i + batch_size < len(records):
                 await asyncio.sleep(0.5)
+        
+        # 4. 重试失败的记录（只重试一次）
+        if failed_records:
+            print(f"\n[{get_timestamp()}] 🔄 重试 {len(failed_records)} 条失败记录...")
+            
+            for record, ip_location in failed_records:
+                stats["retry_count"] += 1
+                result = await call_llm_api(record.content or "", record.title or "", ip_location)
+                
+                if isinstance(result, Exception) or result.get("error"):
+                    stats["error_count"] += 1
+                    print(f"    ❌ ID {record.id}: 重试失败 - {str(result)[:50] if isinstance(result, Exception) else result.get('reason', '')[:50]}")
+                    continue
+                
+                # 更新分析状态
+                await session.execute(
+                    update(UnifiedSentiment)
+                    .where(UnifiedSentiment.id == record.id)
+                    .values(is_analyzed=1, last_modify_ts=current_ts)
+                )
+                
+                if not result.get("is_tianjin_unicom", True):
+                    stats["not_related_count"] += 1
+                    continue
+                
+                stats["tianjin_unicom_count"] += 1
+                score = result.get("score", "中性")
+                if score == "负面":
+                    stats["negative_count"] += 1
+                elif score == "正面":
+                    stats["positive_count"] += 1
+                else:
+                    stats["neutral_count"] += 1
+                
+                if result.get("is_negative"):
+                    platform_name = PLATFORM_NAMES.get(record.platform, record.platform)
+                    content_type_cn = "帖子" if record.content_type == "post" else "评论"
+                    print(f"    🔴 ID {record.id} ({platform_name}): 负面 - {result.get('reason', '')[:40]}...")
+                    
+                    normalized_publish_time = normalize_timestamp(record.publish_time)
+                    normalized_last_modify_ts = normalize_timestamp(record.last_modify_ts)
+                    
+                    negative_items.append({
+                        "unified_id": record.id,
+                        "platform": record.platform,
+                        "platform_name": platform_name,
+                        "content_type": content_type_cn,
+                        "title": record.title,
+                        "content": record.content,
+                        "user_nickname": record.user_nickname,
+                        "ip_location": record.ip_location or "",
+                        "source_url": record.source_url,
+                        "publish_time": normalized_publish_time,
+                        "last_modify_ts": normalized_last_modify_ts,
+                        "sentiment_score": score,
+                        "sentiment_reason": result.get("reason", ""),
+                        "add_ts": current_ts
+                    })
+            
+            await session.commit()
+        
+        # 5. 按publish_time降序排序后批量插入负面舆情
+        if negative_items:
+            # 按publish_time降序排序
+            negative_items.sort(key=lambda x: x["publish_time"], reverse=True)
+            
+            print(f"\n[{get_timestamp()}] 📥 批量插入 {len(negative_items)} 条负面舆情（按时间降序）...")
+            
+            for item in negative_items:
+                negative = NegativeSentiment(
+                    unified_id=item["unified_id"],
+                    platform=item["platform"],
+                    platform_name=item["platform_name"],
+                    content_type=item["content_type"],
+                    title=item["title"],
+                    content=item["content"],
+                    user_nickname=item["user_nickname"],
+                    ip_location=item["ip_location"],
+                    source_url=item["source_url"],
+                    publish_time=item["publish_time"],
+                    last_modify_ts=item["last_modify_ts"],
+                    sentiment_score=item["sentiment_score"],
+                    sentiment_reason=item["sentiment_reason"],
+                    add_ts=item["add_ts"]
+                )
+                session.add(negative)
+            
+            await session.commit()
     
     # 打印结果汇总
     print(f"\n{'='*60}")
@@ -492,6 +641,7 @@ async def process_unanalyzed_content(limit: int = 100, batch_size: int = 5) -> D
     print(f"    🟢 正面: {stats['positive_count']}")
     print(f"    ⚪ 中性: {stats['neutral_count']}")
     print(f"    ⚫ 不相关: {stats['not_related_count']}")
+    print(f"    🔄 重试: {stats['retry_count']}")
     print(f"    ❌ 错误: {stats['error_count']}")
     print(f"{'='*60}\n")
     
