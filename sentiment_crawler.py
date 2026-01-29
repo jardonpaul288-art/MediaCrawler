@@ -42,8 +42,8 @@ SENTIMENT_KEYWORDS = [
 ]
 
 # 支持的平台列表
-# ALL_PLATFORMS = ["ks","dy", "xhs", "bili", "wb", "tieba", "zhihu"]
-ALL_PLATFORMS = ["ks","dy"]
+# ALL_PLATFORMS = ["ks","dy", "xhs", "bili", "wb", "tieba", "zhihu", "toutiao", "heimao"]
+ALL_PLATFORMS = [ "toutiao", "ks"]
 
 # 平台中文名称映射
 PLATFORM_NAMES = {
@@ -54,6 +54,8 @@ PLATFORM_NAMES = {
     "wb": "微博",
     "tieba": "贴吧",
     "zhihu": "知乎",
+    "toutiao": "今日头条",
+    "heimao": "黑猫投诉",
 }
 
 

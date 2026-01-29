@@ -82,6 +82,8 @@ PLATFORM_NAMES = {
     "wb": "微博",
     "tieba": "贴吧",
     "zhihu": "知乎",
+    "toutiao": "今日头条",
+    "heimao": "黑猫投诉",
 }
 
 # 天津联通相关关键词 - 用于初步筛选

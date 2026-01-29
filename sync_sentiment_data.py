@@ -34,7 +34,8 @@ from database.models import (
     UnifiedSentiment,
     BilibiliVideo, DouyinAweme, KuaishouVideo, WeiboNote, XhsNote, TiebaNote, ZhihuContent,
     BilibiliVideoComment, DouyinAwemeComment, KuaishouVideoComment, 
-    WeiboNoteComment, XhsNoteComment, TiebaComment, ZhihuComment
+    WeiboNoteComment, XhsNoteComment, TiebaComment, ZhihuComment,
+    ToutiaoPost, HeimaoComplaint
 )
 
 
@@ -52,6 +53,8 @@ PLATFORM_NAMES = {
     "wb": "微博",
     "tieba": "贴吧",
     "zhihu": "知乎",
+    "toutiao": "今日头条",
+    "heimao": "黑猫投诉",
 }
 
 # 创建数据库引擎
@@ -215,6 +218,44 @@ PLATFORM_MAPPING = {
         "comment_time_field": "add_ts",
         "comment_ip_field": "ip_location",
     },
+    "toutiao": {
+        "post_model": ToutiaoPost,
+        "comment_model": None,  # 今日头条不爬取评论
+        "post_id_field": "post_id",
+        "post_title_field": "title",
+        "post_content_field": "content",
+        "post_user_field": "source",
+        "post_user_id_field": None,
+        "post_url_field": "source_url",
+        "post_time_field": "create_time",
+        "post_keyword_field": "source_keyword",
+        "post_ip_field": None,
+        "comment_id_field": None,
+        "comment_content_field": None,
+        "comment_user_field": None,
+        "comment_user_id_field": None,
+        "comment_time_field": None,
+        "comment_ip_field": None,
+    },
+    "heimao": {
+        "post_model": HeimaoComplaint,
+        "comment_model": None,  # 黑猫投诉不爬取评论
+        "post_id_field": "complaint_id",
+        "post_title_field": "title",
+        "post_content_field": "content",
+        "post_user_field": "user_nickname",
+        "post_user_id_field": None,
+        "post_url_field": "source_url",
+        "post_time_field": "create_time",
+        "post_keyword_field": "source_keyword",
+        "post_ip_field": None,
+        "comment_id_field": None,
+        "comment_content_field": None,
+        "comment_user_field": None,
+        "comment_user_id_field": None,
+        "comment_time_field": None,
+        "comment_ip_field": None,
+    },
 }
 
 
@@ -332,8 +373,13 @@ async def sync_platform_data(session: AsyncSession, platform: str) -> Dict[str, 
         return {"posts": 0, "comments": 0}
     
     try:
-        posts_count = await sync_posts(session, platform, mapping)
-        comments_count = await sync_comments(session, platform, mapping)
+        posts_count = 0
+        if mapping.get("post_model"):
+            posts_count = await sync_posts(session, platform, mapping)
+            
+        comments_count = 0
+        if mapping.get("comment_model"):
+            comments_count = await sync_comments(session, platform, mapping)
         
         print(f"    ✅ {platform_name}: 帖子 {posts_count} 条, 评论 {comments_count} 条")
         return {"posts": posts_count, "comments": comments_count}
